@@ -1,7 +1,27 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
+const fs = require('fs');
+
+function resolveAppIcon() {
+  const winIcon = path.join(__dirname, 'build', 'icon.ico');
+  const unixIcon = path.join(__dirname, 'build', 'icon.png');
+  const rootIcon = path.join(__dirname, 'icon.png');
+
+  if (process.platform === 'win32' && fs.existsSync(winIcon)) {
+    return winIcon;
+  }
+  if (fs.existsSync(unixIcon)) {
+    return unixIcon;
+  }
+  if (fs.existsSync(rootIcon)) {
+    return rootIcon;
+  }
+  return undefined;
+}
 
 function createWindow() {
+  const iconPath = resolveAppIcon();
+
   const win = new BrowserWindow({
     width: 1280,
     height: 860,
@@ -9,6 +29,7 @@ function createWindow() {
     minHeight: 600,
     autoHideMenuBar: true,
     backgroundColor: '#060709',
+    ...(iconPath ? { icon: iconPath } : {}),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

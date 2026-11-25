@@ -24,25 +24,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.hq-scroll::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-
-.hq-scroll::-webkit-scrollbar-track {
-  background: #12161c;
-  border-radius: 9999px;
-}
-
-.hq-scroll::-webkit-scrollbar-thumb {
-  background: #2b3648;
-  border-radius: 9999px;
-}
-
-.hq-scroll::-webkit-scrollbar-thumb:hover {
-  background: #3a4860;
-}
-
 @keyframes hqAccentShift {
   0%,
   100% {
@@ -74,4 +55,64 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+html,
+body {
+  min-height: 100dvh;
+  background-color: var(--op-bg-base, #060709);
+  color: var(--op-text-primary, #f8fafc);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: var(--op-border-subtle, #283242) var(--op-bg-surface, #0d1017);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--op-bg-surface, #0d1017);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--op-border-subtle, #283242);
+  border-radius: 9999px;
+  border: 2px solid var(--op-bg-surface, #0d1017);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--op-accent-primary, var(--op-accent-gold, #f59e0b));
+}
+
+.hq-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--op-border-subtle, #2b3648) var(--op-bg-surface, #12161c);
+}
+
+.hq-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.hq-scroll::-webkit-scrollbar-track {
+  background: var(--op-bg-surface, #12161c);
+  border-radius: 9999px;
+}
+
+.hq-scroll::-webkit-scrollbar-thumb {
+  background: var(--op-border-subtle, #2b3648);
+  border-radius: 9999px;
+}
+
+.hq-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--op-accent-primary, var(--op-accent-gold, #3a4860));
 }

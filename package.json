@@ -10,12 +10,14 @@
         "test": "vitest run",
         "test:watch": "vitest",
         "desktop": "npm run build && electron .",
-        "desktop:build": "npm run build && electron-builder --win portable"
+        "desktop:build": "npm run build && electron-builder --win portable",
+        "desktop:build:mac": "npm run build && electron-builder --mac"
     },
     "dependencies": {
         "@capacitor/android": "^8.6.2",
         "@capacitor/cli": "^8.6.2",
         "@capacitor/core": "^8.6.2",
+        "@capacitor/ios": "^8.6.2",
         "react": "^18.3.1",
         "react-dom": "^18.3.1"
     },
@@ -35,12 +37,28 @@
     "build": {
         "appId": "com.holdemiq.app",
         "productName": "HoldemIQ",
+        "directories": {
+            "output": "release"
+        },
         "files": [
             "dist/**/*",
             "electron-main.cjs"
         ],
         "win": {
-            "target": "portable"
+            "target": "portable",
+            "icon": "build/icon.ico"
+        },
+        "mac": {
+            "target": [
+                {
+                    "target": "dmg",
+                    "arch": [
+                        "arm64",
+                        "x64"
+                    ]
+                }
+            ],
+            "category": "public.app-category.games"
         }
     }
 }

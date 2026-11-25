@@ -9,8 +9,17 @@ import type {
   Suit,
   VerdictAction,
 } from '../engine/types';
+import {
+  type AppLocale,
+  type TranslationKey,
+  translate,
+  translateReasonCode,
+  translateSituationLine,
+  translateVerdictAction,
+} from '../i18n';
 
 export interface TopVerdictAndCardsProps {
+  locale?: AppLocale;
   session: SessionState;
   hand: HandState;
   engine: EngineOutput;
@@ -42,18 +51,14 @@ const TABLE_SIZE_OPTIONS: ReadonlyArray<number> = Array.from(
 
 const ORDERED_RANKS: ReadonlyArray<RankChar> = [...RANK_CHARS].reverse();
 
-const SUIT_SYMBOLS: Record<Suit, { symbol: string; label: string; color: string }> = {
-  s: { symbol: '♠', label: 'Пики', color: '#34D399' },
-  h: { symbol: '♥', label: 'Червы', color: '#F43F5E' },
-  d: { symbol: '♦', label: 'Бубны', color: '#38BDF8' },
-  c: { symbol: '♣', label: 'Трефы', color: '#10B981' },
-};
-
-const VERDICT_LABEL_RU: Record<VerdictAction, string> = {
-  FOLD: 'ПАС (FOLD)',
-  CHECK: 'ЧЕК (CHECK)',
-  CALL: 'КОЛЛ (CALL)',
-  RAISE: 'РЕЙЗ (RAISE)',
+const SUIT_VISUALS: Record<
+  Suit,
+  { symbol: string; labelKey: TranslationKey; color: string }
+> = {
+  s: { symbol: '♠', labelKey: 'suitSpades', color: '#34D399' },
+  h: { symbol: '♥', labelKey: 'suitHearts', color: '#F43F5E' },
+  d: { symbol: '♦', labelKey: 'suitDiamonds', color: '#38BDF8' },
+  c: { symbol: '♣', labelKey: 'suitClubs', color: '#10B981' },
 };
 
 function getVerdictColor(action: VerdictAction): string {
@@ -67,7 +72,7 @@ function formatCardText(card: Card | null | undefined): string {
   if (!card) return '+';
   const rank = card[0] as RankChar;
   const suit = card[1] as Suit;
-  return `${rank}${SUIT_SYMBOLS[suit]?.symbol ?? suit}`;
+  return `${rank}${SUIT_VISUALS[suit]?.symbol ?? suit}`;
 }
 
 function makeEmptyBoardSlots(): Array<Card | null> {
@@ -75,6 +80,7 @@ function makeEmptyBoardSlots(): Array<Card | null> {
 }
 
 export function TopVerdictAndCards({
+  locale = 'en',
   session,
   hand,
   engine,
@@ -87,6 +93,8 @@ export function TopVerdictAndCards({
   onResetFullGame,
   onSetTableSize,
 }: TopVerdictAndCardsProps) {
+  const t = (key: TranslationKey) => translate(locale, key);
+
   const [picker, setPicker] = useState<ActiveCardPicker>(null);
   const [renderedPicker, setRenderedPicker] = useState<ActiveCardPicker>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -464,18 +472,38 @@ export function TopVerdictAndCards({
   const raiseMultiple = engine.raiseMultipleLabel;
   const showAllInSlash = Boolean(engine.verdict.suggestAllInSlash);
 
+  const stageText =
+    hand.street === 'Pre'
+      ? t('stagePre')
+      : hand.street === 'Flop'
+        ? t('stageFlop')
+        : hand.street === 'Turn'
+          ? t('stageTurn')
+          : hand.street === 'River'
+            ? t('stageRiver')
+            : t('stageShowdown');
+
   const activeModalPicker = picker ?? renderedPicker;
   const modalContextLabel = activeModalPicker
     ? activeModalPicker.target === 'my'
-      ? 'Рука «Я» (2 карты)'
+      ? t('pickerContextMy')
       : activeModalPicker.midHand
-        ? `С середины (5 карт борда)`
+        ? t('pickerContextMidHand')
         : activeModalPicker.targetCount === 3
-          ? 'Флоп (3 карты)'
+          ? t('pickerContextFlop')
           : activeModalPicker.targetCount === 4
-            ? 'Тёрн (4 карты)'
-            : 'Ривер (5 карт)'
+            ? t('pickerContextTurn')
+            : t('pickerContextRiver')
     : '';
+
+  const verdictReasonText = translateSituationLine(
+    locale,
+    translateReasonCode(
+      locale,
+      engine.verdict.reasonCode,
+      engine.verdict.reasonText
+    )
+  );
 
   return (
     <section
@@ -490,12 +518,12 @@ export function TopVerdictAndCards({
         style={{ borderColor: 'var(--op-border-subtle)' }}
         className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5"
       >
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <div ref={tableSizeMenuRef} className="relative">
             <button
               type="button"
               aria-expanded={tableSizeMenuOpen}
-              aria-label="Выбор количества игроков за столом"
+              aria-label={t('tableAria')}
               onClick={() => setTableSizeMenuOpen((prev) => !prev)}
               style={{
                 backgroundColor: 'var(--op-bg-elevated)',
@@ -504,18 +532,18 @@ export function TopVerdictAndCards({
                   : 'var(--op-border-subtle)',
                 color: 'var(--op-text-primary)',
               }}
-              className="flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-1 text-xs font-bold transition hover:brightness-110"
+              className="flex max-w-full items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-bold transition hover:brightness-110"
             >
               <span
                 style={{ color: 'var(--op-text-secondary)' }}
-                className="font-normal"
+                className="truncate font-normal"
               >
-                Стол:
+                {t('tableLabel')}
               </span>
-              <span className="op-tabular">{session.nTable}</span>
+              <span className="op-tabular shrink-0">{session.nTable}</span>
               <span
                 style={{ color: 'var(--op-text-secondary)' }}
-                className="text-[10px]"
+                className="shrink-0 text-[10px]"
               >
                 ▾
               </span>
@@ -532,9 +560,9 @@ export function TopVerdictAndCards({
               >
                 <div
                   style={{ color: 'var(--op-text-secondary)' }}
-                  className="mb-1 px-1 text-[10px] font-semibold"
+                  className="mb-1 truncate px-1 text-[10px] font-semibold"
                 >
-                  Мест за столом (2–15)
+                  {t('tableSeatsTitle')}
                 </div>
                 <div className="grid grid-cols-4 gap-1">
                   {TABLE_SIZE_OPTIONS.map((n) => {
@@ -579,9 +607,9 @@ export function TopVerdictAndCards({
               borderColor: 'var(--op-border-subtle)',
               color: 'var(--op-stat-me)',
             }}
-            className="op-tabular whitespace-nowrap rounded-xl border px-2.5 py-1 text-xs font-semibold"
+            className="op-tabular max-w-full truncate rounded-xl border px-2.5 py-1 text-xs font-semibold"
           >
-            В игре: {engine.nActive}/{session.nTable}
+            {t('inPlayLabel')} {engine.nActive}/{session.nTable}
           </span>
 
           <span
@@ -590,19 +618,11 @@ export function TopVerdictAndCards({
               borderColor: 'var(--op-border-subtle)',
               color: 'var(--op-text-secondary)',
             }}
-            className="whitespace-nowrap rounded-xl border px-2.5 py-1 text-xs"
+            className="max-w-full truncate rounded-xl border px-2.5 py-1 text-xs"
           >
-            Этап:{' '}
+            {t('stageLabel')}{' '}
             <strong style={{ color: 'var(--op-text-primary)' }}>
-              {hand.street === 'Pre'
-                ? 'Префлоп'
-                : hand.street === 'Flop'
-                  ? 'Флоп'
-                  : hand.street === 'Turn'
-                    ? 'Тёрн'
-                    : hand.street === 'River'
-                      ? 'Ривер'
-                      : 'Вскрытие'}
+              {stageText}
             </strong>
           </span>
 
@@ -612,9 +632,9 @@ export function TopVerdictAndCards({
               borderColor: 'var(--op-border-subtle)',
               color: 'var(--op-text-secondary)',
             }}
-            className="op-tabular whitespace-nowrap rounded-xl border px-2.5 py-1 text-xs"
+            className="op-tabular max-w-full truncate rounded-xl border px-2.5 py-1 text-xs"
           >
-            BTN #{engine.positions.btn + 1} · SB #{engine.positions.sb + 1} · BB #
+            BTN {engine.positions.btn + 1} · SB {engine.positions.sb + 1} · BB{' '}
             {engine.positions.bb + 1}
           </span>
         </div>
@@ -634,9 +654,9 @@ export function TopVerdictAndCards({
               borderColor: 'var(--op-border-subtle)',
               color: 'var(--op-text-secondary)',
             }}
-            className="whitespace-nowrap rounded-xl border px-3 py-1.5 text-xs font-semibold transition hover:brightness-110"
+            className="max-w-full truncate rounded-xl border px-3 py-1.5 text-xs font-semibold transition hover:brightness-110"
           >
-            Полный сброс
+            {t('resetFullGame')}
           </button>
           <button
             type="button"
@@ -652,9 +672,9 @@ export function TopVerdictAndCards({
               borderColor: 'var(--op-accent-primary)',
               color: 'var(--op-accent-primary)',
             }}
-            className="whitespace-nowrap rounded-xl border px-3 py-1.5 text-xs font-bold transition hover:brightness-110"
+            className="max-w-full truncate rounded-xl border px-3 py-1.5 text-xs font-bold transition hover:brightness-110"
           >
-            Новая раздача (BTN →)
+            {t('startNewHand')}
           </button>
         </div>
       </div>
@@ -665,20 +685,20 @@ export function TopVerdictAndCards({
             backgroundColor: 'var(--op-accent-gold-soft)',
             borderColor: 'var(--op-accent-gold)',
           }}
-          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-1.5 text-xs"
+          className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-1.5 text-xs"
         >
           <span
             style={{ color: 'var(--op-accent-gold)' }}
             className="op-tabular font-semibold"
           >
-            Серия рейзов на этапе: +{raisesCount}
+            {t('raiseStreakPrefix')} +{raisesCount}
             {raiseMultiple ? ` (${raiseMultiple})` : ''}
           </span>
           <span
             style={{ color: 'var(--op-text-secondary)' }}
-            className="text-[11px]"
+            className="break-words text-[11px]"
           >
-            Учитывается в давлении и сужении диапазонов соперников
+            {t('raiseStreakHint')}
           </span>
         </div>
       )}
@@ -689,14 +709,14 @@ export function TopVerdictAndCards({
             borderColor: verdictColor,
             backgroundColor: 'var(--op-bg-elevated)',
           }}
-          className="rounded-2xl border p-3 md:col-span-7"
+          className="min-w-0 rounded-2xl border p-3 md:col-span-7"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span
               style={{ color: 'var(--op-text-secondary)' }}
-              className="text-[11px] font-bold uppercase tracking-wider"
+              className="truncate text-[11px] font-bold uppercase tracking-wider"
             >
-              Рекомендация
+              {t('recommendationLabel')}
             </span>
             {raiseMultiple && (
               <span
@@ -715,7 +735,9 @@ export function TopVerdictAndCards({
             style={{ color: verdictColor }}
             className="mt-1 flex flex-wrap items-baseline gap-1.5 text-xl font-extrabold tracking-tight"
           >
-            <span>{VERDICT_LABEL_RU[engine.verdict.action]}</span>
+            <span className="break-words">
+              {translateVerdictAction(locale, engine.verdict.action)}
+            </span>
             {showAllInSlash && (
               <>
                 <span style={{ color: 'var(--op-text-secondary)' }}>/</span>
@@ -728,28 +750,28 @@ export function TopVerdictAndCards({
               </>
             )}
           </div>
-          <p className="mt-1 text-xs leading-relaxed">
-            {engine.verdict.reasonText}
+          <p className="mt-1 break-words text-xs leading-relaxed">
+            {verdictReasonText}
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 md:col-span-5">
+        <div className="grid min-w-0 grid-cols-3 gap-2 md:col-span-5">
           <div
             style={{
               backgroundColor: 'var(--op-bg-elevated)',
               borderColor: 'var(--op-border-subtle)',
             }}
-            className="rounded-xl border p-2.5 text-center"
+            className="min-w-0 rounded-xl border px-1.5 py-2.5 text-center"
           >
             <div
               style={{ color: 'var(--op-text-secondary)' }}
-              className="text-[11px]"
+              className="truncate text-[10px] sm:text-[11px]"
             >
-              Победа
+              {t('winLabel')}
             </div>
             <div
               style={{ color: 'var(--op-stat-me)' }}
-              className="op-tabular mt-0.5 text-base font-extrabold"
+              className="op-tabular mt-0.5 text-sm font-extrabold sm:text-base"
             >
               {(engine.probabilities.pWinAdj * 100).toFixed(1)}%
             </div>
@@ -759,17 +781,17 @@ export function TopVerdictAndCards({
               backgroundColor: 'var(--op-bg-elevated)',
               borderColor: 'var(--op-border-subtle)',
             }}
-            className="rounded-xl border p-2.5 text-center"
+            className="min-w-0 rounded-xl border px-1.5 py-2.5 text-center"
           >
             <div
               style={{ color: 'var(--op-text-secondary)' }}
-              className="text-[11px]"
+              className="truncate text-[10px] sm:text-[11px]"
             >
-              Ничья
+              {t('tieLabel')}
             </div>
             <div
               style={{ color: 'var(--op-accent-call)' }}
-              className="op-tabular mt-0.5 text-base font-bold"
+              className="op-tabular mt-0.5 text-sm font-bold sm:text-base"
             >
               {(engine.probabilities.pTie * 100).toFixed(1)}%
             </div>
@@ -779,17 +801,17 @@ export function TopVerdictAndCards({
               backgroundColor: 'var(--op-bg-elevated)',
               borderColor: 'var(--op-border-subtle)',
             }}
-            className="rounded-xl border p-2.5 text-center"
+            className="min-w-0 rounded-xl border px-1.5 py-2.5 text-center"
           >
             <div
               style={{ color: 'var(--op-text-secondary)' }}
-              className="text-[11px]"
+              className="truncate text-[10px] sm:text-[11px]"
             >
-              Проигрыш
+              {t('loseLabel')}
             </div>
             <div
               style={{ color: 'var(--op-accent-fold)' }}
-              className="op-tabular mt-0.5 text-base font-bold"
+              className="op-tabular mt-0.5 text-sm font-bold sm:text-base"
             >
               {(engine.probabilities.pLoseAdj * 100).toFixed(1)}%
             </div>
@@ -803,21 +825,21 @@ export function TopVerdictAndCards({
           backgroundColor: 'var(--op-bg-elevated)',
           borderColor: 'var(--op-border-subtle)',
         }}
-        className="space-y-2.5 rounded-xl border p-3"
+        className="min-w-0 space-y-2.5 rounded-xl border p-3"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span
               style={{ color: 'var(--op-text-secondary)' }}
-              className="whitespace-nowrap text-xs font-semibold"
+              className="truncate text-xs font-semibold"
             >
-              Мои карты:
+              {t('myCardsLabel')}
             </span>
             {([0, 1] as const).map((slot) => {
               const card = hand.myCards[slot];
               const isActiveSlot = picker?.target === 'my' && picker.slot === slot;
               const suitColor = card
-                ? SUIT_SYMBOLS[card[1] as Suit]?.color
+                ? SUIT_VISUALS[card[1] as Suit]?.color
                 : undefined;
               return (
                 <button
@@ -857,9 +879,9 @@ export function TopVerdictAndCards({
                   borderColor: 'var(--op-border-subtle)',
                   color: 'var(--op-text-secondary)',
                 }}
-                className="whitespace-nowrap rounded-lg border px-2.5 py-1 text-[11px]"
+                className="max-w-full truncate rounded-lg border px-2.5 py-1 text-[11px]"
               >
-                Сброс
+                {t('clearBtn')}
               </button>
             )}
           </div>
@@ -867,9 +889,9 @@ export function TopVerdictAndCards({
           <div className="flex flex-wrap items-center gap-1">
             <span
               style={{ color: 'var(--op-text-secondary)' }}
-              className="mr-1 whitespace-nowrap text-xs"
+              className="mr-1 truncate text-xs"
             >
-              Борд:
+              {t('boardLabel')}
             </span>
             {([0, 3, 4, 5] as const).map((cnt) => {
               const activePreset =
@@ -892,15 +914,15 @@ export function TopVerdictAndCards({
                           color: 'var(--op-text-secondary)',
                         }
                   }
-                  className="whitespace-nowrap rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition"
+                  className="max-w-full truncate rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition"
                 >
                   {cnt === 0
-                    ? 'Префлоп (0)'
+                    ? t('boardPreflop')
                     : cnt === 3
-                      ? 'Флоп (3)'
+                      ? t('boardFlop')
                       : cnt === 4
-                        ? 'Тёрн (4)'
-                        : 'Ривер (5)'}
+                        ? t('boardTurn')
+                        : t('boardRiver')}
                 </button>
               );
             })}
@@ -915,9 +937,9 @@ export function TopVerdictAndCards({
                 borderColor: 'var(--op-accent-gold)',
                 color: 'var(--op-accent-gold)',
               }}
-              className="whitespace-nowrap rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition"
+              className="max-w-full truncate rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition"
             >
-              С середины
+              {t('midHandBtn')}
             </button>
           </div>
         </div>
@@ -926,16 +948,16 @@ export function TopVerdictAndCards({
           <div className="flex flex-wrap items-center gap-2">
             <span
               style={{ color: 'var(--op-text-secondary)' }}
-              className="whitespace-nowrap text-xs font-semibold"
+              className="truncate text-xs font-semibold"
             >
-              Карты борда:
+              {t('boardCardsLabel')}
             </span>
             {Array.from({ length: boardSlotsCount }, (_, idx) => {
               const card = boardSlotsState[idx] ?? null;
               const isActiveSlot =
                 picker?.target === 'board' && picker.slot === idx;
               const suitColor = card
-                ? SUIT_SYMBOLS[card[1] as Suit]?.color
+                ? SUIT_VISUALS[card[1] as Suit]?.color
                 : undefined;
               return (
                 <button
@@ -988,30 +1010,30 @@ export function TopVerdictAndCards({
               }`}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="space-y-0.5">
+                <div className="min-w-0 space-y-0.5">
                   <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-                    <span>
+                    <span className="truncate">
                       {activeModalPicker.target === 'my'
-                        ? `Карта «Я» #${activeModalPicker.slot + 1}`
-                        : `Карта борда #${activeModalPicker.slot + 1}`}
+                        ? `${t('pickerMyTitlePrefix')} ${activeModalPicker.slot + 1}`
+                        : `${t('pickerBoardTitlePrefix')} ${activeModalPicker.slot + 1}`}
                     </span>
                     <span
                       style={{
                         backgroundColor: 'var(--op-accent-gold-soft)',
                         color: 'var(--op-accent-gold)',
                       }}
-                      className="rounded-md px-1.5 py-0.5 text-[10px] font-bold sm:hidden"
+                      className="max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-bold sm:hidden"
                     >
                       {modalContextLabel}
                     </span>
                   </div>
                   <div
                     style={{ color: 'var(--op-text-secondary)' }}
-                    className="text-[11px]"
+                    className="break-words text-[11px]"
                   >
                     {activeModalPicker.autoChain
-                      ? 'Выбери номинал и масть — дальше перейдёт само'
-                      : 'Выбери номинал и масть — закроется после выбора'}
+                      ? t('pickerAutoChainHint')
+                      : t('pickerSingleHint')}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -1023,9 +1045,9 @@ export function TopVerdictAndCards({
                       borderColor: 'var(--op-border-subtle)',
                       color: 'var(--op-text-secondary)',
                     }}
-                    className="whitespace-nowrap rounded-lg border px-2.5 py-1 text-[11px]"
+                    className="max-w-full truncate rounded-lg border px-2.5 py-1 text-[11px]"
                   >
-                    Очистить слот
+                    {t('clearSlotBtn')}
                   </button>
                   <button
                     type="button"
@@ -1035,14 +1057,13 @@ export function TopVerdictAndCards({
                       borderColor: 'var(--op-border-subtle)',
                       color: 'var(--op-text-secondary)',
                     }}
-                    className="whitespace-nowrap rounded-lg border px-2.5 py-1 text-[11px]"
+                    className="max-w-full truncate rounded-lg border px-2.5 py-1 text-[11px]"
                   >
-                    Закрыть
+                    {t('closeBtn')}
                   </button>
                 </div>
               </div>
 
-              {/* Быстрый переход между слотами набора внутри модального окна на телефоне */}
               <div className="flex flex-wrap items-center gap-1.5 sm:hidden">
                 {activeModalPicker.target === 'my'
                   ? ([0, 1] as const).map((slotIdx) => {
@@ -1076,7 +1097,7 @@ export function TopVerdictAndCards({
                           }
                           className="op-tabular rounded-lg border px-2.5 py-1 text-[11px] font-bold"
                         >
-                          Я {slotIdx + 1}: {formatCardText(card)}
+                          {t('meShort')} {slotIdx + 1}: {formatCardText(card)}
                         </button>
                       );
                     })
@@ -1128,9 +1149,9 @@ export function TopVerdictAndCards({
                 <div className="sm:col-span-5">
                   <div
                     style={{ color: 'var(--op-text-secondary)' }}
-                    className="mb-1 text-[11px]"
+                    className="mb-1 truncate text-[11px]"
                   >
-                    1. Номинал (сверху вниз: A → 2)
+                    {t('stepRankLabel')}
                   </div>
                   <div
                     ref={rankWheelRef}
@@ -1167,13 +1188,13 @@ export function TopVerdictAndCards({
                 <div className="space-y-2 sm:col-span-7">
                   <div
                     style={{ color: 'var(--op-text-secondary)' }}
-                    className="text-[11px]"
+                    className="truncate text-[11px]"
                   >
-                    2. Нажми масть
+                    {t('stepSuitLabel')}
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     {SUITS.map((suit) => {
-                      const meta = SUIT_SYMBOLS[suit];
+                      const meta = SUIT_VISUALS[suit];
                       const candidate = `${pendingRank}${suit}` as Card;
                       const currentEdited = getCurrentlyEditedCard();
                       const isTaken =
@@ -1192,19 +1213,19 @@ export function TopVerdictAndCards({
                               ? 'var(--op-accent-gold)'
                               : 'var(--op-border-subtle)',
                           }}
-                          className={`flex h-9 items-center justify-between rounded-xl border px-2.5 text-xs font-bold transition ${
+                          className={`flex min-w-0 h-9 items-center justify-between gap-1 rounded-xl border px-2.5 text-xs font-bold transition ${
                             isTaken ? 'cursor-not-allowed opacity-30' : ''
                           }`}
                         >
-                          <span>
+                          <span className="shrink-0">
                             {pendingRank}
                             {meta.symbol}
                           </span>
                           <span
                             style={{ color: 'var(--op-text-secondary)' }}
-                            className="text-[11px] font-medium"
+                            className="truncate text-[11px] font-medium"
                           >
-                            {meta.label}
+                            {t(meta.labelKey)}
                           </span>
                         </button>
                       );

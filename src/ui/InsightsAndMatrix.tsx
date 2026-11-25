@@ -12,8 +12,18 @@ import type {
   RankChar,
   SessionState,
 } from '../engine/types';
+import {
+  type AppLocale,
+  formatPlayerDisplayName,
+  type TranslationKey,
+  translate,
+  translateReasonCode,
+  translateSituationLine,
+  translateStyleTag,
+} from '../i18n';
 
 export interface InsightsAndMatrixProps {
+  locale?: AppLocale;
   session: SessionState;
   hand: HandState;
   engine: EngineOutput;
@@ -46,27 +56,19 @@ interface ComboDisplayItem {
   oppPct: number;
 }
 
-const STYLE_LABEL_RU: Record<PlayerStyleTag, string> = {
-  NEUTRAL: 'Обычный стиль',
-  TIGHT_AGG: 'Тайтово-агрессивный',
-  TIGHT_PASSIVE: 'Тайтово-пассивный',
-  LOOSE_PASSIVE: 'Лузово-пассивный',
-  LOOSE_AGG: 'Лузово-агрессивный',
-};
-
 const COMBO_META: ReadonlyArray<{
   key: HandRankClass;
-  label: string;
+  labelKey: TranslationKey;
   weight: number;
 }> = [
-  { key: 'PAIR', label: 'Пара', weight: 0.34 },
-  { key: 'TWO_PAIR', label: 'Две пары', weight: 0.2 },
-  { key: 'THREE_OF_A_KIND', label: 'Сет', weight: 0.12 },
-  { key: 'STRAIGHT', label: 'Стрит', weight: 0.1 },
-  { key: 'FLUSH', label: 'Флеш', weight: 0.09 },
-  { key: 'FULL_HOUSE', label: 'Фулл-хаус', weight: 0.07 },
-  { key: 'FOUR_OF_A_KIND', label: 'Каре', weight: 0.04 },
-  { key: 'STRAIGHT_FLUSH', label: 'Стрит-флеш', weight: 0.02 },
+  { key: 'PAIR', labelKey: 'comboPair', weight: 0.34 },
+  { key: 'TWO_PAIR', labelKey: 'comboTwoPair', weight: 0.2 },
+  { key: 'THREE_OF_A_KIND', labelKey: 'comboThreeOfAKind', weight: 0.12 },
+  { key: 'STRAIGHT', labelKey: 'comboStraight', weight: 0.1 },
+  { key: 'FLUSH', labelKey: 'comboFlush', weight: 0.09 },
+  { key: 'FULL_HOUSE', labelKey: 'comboFullHouse', weight: 0.07 },
+  { key: 'FOUR_OF_A_KIND', labelKey: 'comboFourOfAKind', weight: 0.04 },
+  { key: 'STRAIGHT_FLUSH', labelKey: 'comboStraightFlush', weight: 0.02 },
 ];
 
 function clamp(val: number, min: number, max: number): number {
@@ -274,6 +276,7 @@ function pickPairForCell(
 }
 
 export function InsightsAndMatrix({
+  locale = 'en',
   session,
   hand,
   engine,
@@ -291,6 +294,8 @@ export function InsightsAndMatrix({
   onResumePlayer,
   onResetPlayerMemory,
 }: InsightsAndMatrixProps) {
+  const t = (key: TranslationKey) => translate(locale, key);
+
   const [activeTab, setActiveTab] = useState<ActiveTab>('matrix');
   const [summaryMode, setSummaryMode] = useState<SummaryMode>('live');
   const [hoveredCellLabel, setHoveredCellLabel] = useState<string | null>(null);
@@ -395,12 +400,12 @@ export function InsightsAndMatrix({
       );
       return {
         key: meta.key,
-        label: meta.label,
+        label: t(meta.labelKey),
         myPct: Number(myVal.toFixed(1)),
         oppPct: Number(oppVal.toFixed(1)),
       };
     });
-  }, [engine.probabilities.combinations, engine.raisesOnStreet, oppThreatPct]);
+  }, [engine.probabilities.combinations, engine.raisesOnStreet, locale, oppThreatPct]);
 
   const seatRoster = useMemo(() => {
     return Array.from({ length: session.nTable }, (_, seatIndex) => {
@@ -415,11 +420,12 @@ export function InsightsAndMatrix({
       const isAllIn = Boolean(
         (participant?.isAllIn || insight?.isAllIn) && status === 'active'
       );
-      const displayName = isMe
-        ? 'Я'
-        : cfg?.name && !cfg.name.startsWith('seat-')
-          ? cfg.name
-          : `Игрок #${seatIndex + 1}`;
+      const displayName = formatPlayerDisplayName(
+        locale,
+        cfg?.name ?? mem?.name,
+        seatIndex,
+        isMe
+      );
 
       return {
         seatIndex,
@@ -439,6 +445,7 @@ export function InsightsAndMatrix({
     engine.playerInsights,
     hand.mySeat,
     hand.participants,
+    locale,
     session.nTable,
     session.players,
     session.seats,
@@ -458,6 +465,18 @@ export function InsightsAndMatrix({
   const raiseList = seatRoster
     .filter((p) => raisedSeats.has(p.seatIndex))
     .map((p) => p.displayName);
+
+  const afterMeDisplayNames = useMemo(() => {
+    return engine.turnContext.afterMe.map((idOrName) => {
+      const seatMatch = seatRoster.find(
+        (r) => r.playerId === idOrName || r.displayName === idOrName
+      );
+      if (seatMatch) return seatMatch.displayName;
+      const idxMatch = idOrName.match(/(\d+)/);
+      const idx = idxMatch ? Math.max(0, Number(idxMatch[1]) - 1) : 0;
+      return formatPlayerDisplayName(locale, idOrName, idx, false);
+    });
+  }, [engine.turnContext.afterMe, locale, seatRoster]);
 
   const usedCardsSet = useMemo(() => {
     const s = new Set<Card>();
@@ -501,6 +520,8 @@ export function InsightsAndMatrix({
     onStartNewHand();
   }
 
+  const revealedSeatLabelClean = t('revealedCardSeatPrefix');
+
   return (
     <div className="flex min-w-0 flex-col">
       <section
@@ -518,12 +539,12 @@ export function InsightsAndMatrix({
           <div className="flex flex-wrap items-center gap-1.5">
             {(
               [
-                { id: 'matrix', label: 'Матрица 13×13' },
+                { id: 'matrix', label: t('tabMatrix') },
                 {
                   id: 'players',
-                  label: `Досье (${seatRoster.filter((p) => !p.isMe).length})`,
+                  label: `${t('tabPlayersPrefix')} (${seatRoster.filter((p) => !p.isMe).length})`,
                 },
-                { id: 'summary', label: 'Итог' },
+                { id: 'summary', label: t('tabSummary') },
               ] as const
             ).map((tab) => (
               <button
@@ -543,7 +564,7 @@ export function InsightsAndMatrix({
                         color: 'var(--op-text-secondary)',
                       }
                 }
-                className="whitespace-nowrap rounded-xl border px-2.5 py-1.5 text-xs font-bold transition"
+                className="max-w-full truncate rounded-xl border px-2.5 py-1.5 text-xs font-bold transition"
               >
                 {tab.label}
               </button>
@@ -552,26 +573,27 @@ export function InsightsAndMatrix({
 
           <div
             style={{ color: 'var(--op-text-secondary)' }}
-            className="op-tabular whitespace-nowrap text-[11px]"
+            className="op-tabular max-w-full truncate text-[11px]"
           >
-            Ходов: {hand.events.length} · ALL-IN: {engine.nAiOpp ?? allInList.length}
+            {t('movesCountLabel')} {hand.events.length} · {t('allInCountLabel')}{' '}
+            {engine.nAiOpp ?? allInList.length}
           </div>
         </div>
 
         {activeTab === 'matrix' && (
           <div className="min-w-0 space-y-2.5">
-            <div className="flex min-h-[24px] flex-nowrap items-center justify-between gap-2 text-[11px]">
+            <div className="flex min-h-[24px] min-w-0 flex-nowrap items-center justify-between gap-2 text-[11px]">
               <span
                 style={{ color: 'var(--op-text-secondary)' }}
                 className="min-w-0 truncate"
               >
                 {!hasCalculationsStarted
-                  ? 'Ожидание — волна по матрице'
+                  ? t('matrixIdleStatus')
                   : finalWaveActive
-                    ? 'Финальная волна расчётов'
+                    ? t('matrixFinalWaveStatus')
                     : hoveredCellLabel
-                      ? `${hoveredCellLabel} · в «Я»`
-                      : 'Расчёты по текущим данным'}
+                      ? `${hoveredCellLabel} ${t('matrixInMeSuffix')}`
+                      : t('matrixActiveStatus')}
               </span>
               <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[10px]">
                 <span
@@ -582,7 +604,7 @@ export function InsightsAndMatrix({
                     style={{ backgroundColor: 'var(--op-accent-primary)' }}
                     className="h-2 w-2 shrink-0 rounded-sm"
                   />
-                  Рейз
+                  {t('legendRaise')}
                 </span>
                 <span
                   style={{ color: 'var(--op-text-secondary)' }}
@@ -592,7 +614,7 @@ export function InsightsAndMatrix({
                     style={{ backgroundColor: 'var(--op-accent-call)' }}
                     className="h-2 w-2 shrink-0 rounded-sm opacity-75"
                   />
-                  Колл/Чек
+                  {t('legendCallCheck')}
                 </span>
                 <span
                   style={{ color: 'var(--op-text-secondary)' }}
@@ -602,7 +624,7 @@ export function InsightsAndMatrix({
                     style={{ backgroundColor: 'var(--op-text-muted)' }}
                     className="h-2 w-2 shrink-0 rounded-sm"
                   />
-                  Пас/Блок
+                  {t('legendFoldBlock')}
                 </span>
               </div>
             </div>
@@ -659,14 +681,14 @@ export function InsightsAndMatrix({
                 backgroundColor: 'var(--op-bg-elevated)',
                 borderColor: 'var(--op-border-subtle)',
               }}
-              className="grid grid-cols-2 items-center gap-3 rounded-xl border px-3 py-2"
+              className="grid min-w-0 grid-cols-2 items-center gap-3 rounded-xl border px-3 py-2"
             >
-              <div>
+              <div className="min-w-0">
                 <div
                   style={{ color: 'var(--op-text-secondary)' }}
-                  className="text-[11px] font-medium"
+                  className="truncate text-[11px] font-medium"
                 >
-                  Сила и потенциал «Я»
+                  {t('myStrengthLabel')}
                 </div>
                 <div
                   style={{ color: 'var(--op-stat-me)' }}
@@ -676,12 +698,12 @@ export function InsightsAndMatrix({
                 </div>
               </div>
 
-              <div className="text-right">
+              <div className="min-w-0 text-right">
                 <div
                   style={{ color: 'var(--op-text-secondary)' }}
-                  className="text-[11px] font-medium"
+                  className="truncate text-[11px] font-medium"
                 >
-                  Угроза стола / соперников
+                  {t('oppThreatLabel')}
                 </div>
                 <div
                   style={{ color: 'var(--op-stat-threat)' }}
@@ -695,10 +717,10 @@ export function InsightsAndMatrix({
             <div className="space-y-1.5">
               <div
                 style={{ color: 'var(--op-text-secondary)' }}
-                className="flex items-center justify-between text-[11px]"
+                className="flex items-center justify-between gap-2 text-[11px]"
               >
-                <span>Комбинации</span>
-                <span>Моё / Стол</span>
+                <span className="truncate">{t('combosTitle')}</span>
+                <span className="shrink-0">{t('combosRatio')}</span>
               </div>
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {comboItems.map((item) => (
@@ -708,10 +730,10 @@ export function InsightsAndMatrix({
                       backgroundColor: 'var(--op-bg-elevated)',
                       borderColor: 'var(--op-border-subtle)',
                     }}
-                    className="flex items-center justify-between rounded-xl border px-2.5 py-1.5 text-xs"
+                    className="flex min-w-0 items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 text-xs"
                   >
                     <span className="truncate font-semibold">{item.label}</span>
-                    <span className="op-tabular ml-2 shrink-0 font-bold">
+                    <span className="op-tabular shrink-0 font-bold">
                       <span style={{ color: 'var(--op-stat-me)' }}>
                         {item.myPct.toFixed(1)}%
                       </span>
@@ -750,17 +772,13 @@ export function InsightsAndMatrix({
                       ? 'var(--op-accent-gold)'
                       : 'var(--op-border-subtle)',
                   }}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-2.5 text-xs"
+                  className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl border p-2.5 text-xs"
                 >
                   <div className="min-w-0 space-y-0.5">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span
-                        style={{ color: 'var(--op-text-secondary)' }}
-                        className="op-tabular text-[11px] font-bold"
-                      >
-                        #{p.seatIndex + 1}
+                      <span className="truncate font-extrabold">
+                        {p.displayName}
                       </span>
-                      <span className="font-extrabold">{p.displayName}</span>
                       {p.isAllIn && (
                         <span
                           style={{
@@ -780,7 +798,7 @@ export function InsightsAndMatrix({
                           }}
                           className="rounded px-1.5 py-0.5 text-[10px] font-bold"
                         >
-                          Выбыл
+                          {t('seatEliminated')}
                         </span>
                       )}
                       {p.status === 'folded' && !p.isAllIn && (
@@ -788,25 +806,25 @@ export function InsightsAndMatrix({
                           style={{ color: 'var(--op-text-muted)' }}
                           className="rounded px-1.5 py-0.5 text-[10px] font-bold"
                         >
-                          Пас (FOLD)
+                          {t('seatFolded')}
                         </span>
                       )}
                     </div>
 
                     <div
                       style={{ color: 'var(--op-text-secondary)' }}
-                      className="op-tabular text-[11px]"
+                      className="op-tabular break-words text-[11px]"
                     >
-                      {STYLE_LABEL_RU[p.styleTag]} · Φ:{' '}
+                      {translateStyleTag(locale, p.styleTag)} · Φ:{' '}
                       <strong style={{ color: 'var(--op-text-primary)' }}>
                         {p.phi >= 0 ? `+${p.phi.toFixed(2)}` : p.phi.toFixed(2)}
                       </strong>{' '}
-                      · Рук: {p.effectiveSamples.toFixed(1)} · Побед: {p.nWinsTotal}/
-                      {p.nShowdownsTotal}
+                      · {t('dossierHandsLabel')} {p.effectiveSamples.toFixed(1)} ·{' '}
+                      {t('dossierWinsLabel')} {p.nWinsTotal}/{p.nShowdownsTotal}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {p.status === 'eliminated' && (
                       <button
                         type="button"
@@ -816,9 +834,9 @@ export function InsightsAndMatrix({
                           borderColor: 'var(--op-accent-primary)',
                           color: 'var(--op-accent-primary)',
                         }}
-                        className="whitespace-nowrap rounded-lg border px-2.5 py-1 text-[11px] font-bold hover:brightness-110"
+                        className="max-w-full truncate rounded-lg border px-2.5 py-1 text-[11px] font-bold hover:brightness-110"
                       >
-                        Возобновить
+                        {t('resumePlayerAction')}
                       </button>
                     )}
                     <button
@@ -829,9 +847,9 @@ export function InsightsAndMatrix({
                         borderColor: 'var(--op-border-subtle)',
                         color: 'var(--op-text-secondary)',
                       }}
-                      className="whitespace-nowrap rounded-lg border px-2.5 py-1 text-[11px]"
+                      className="max-w-full truncate rounded-lg border px-2.5 py-1 text-[11px]"
                     >
-                      Сброс профиля
+                      {t('resetProfileAction')}
                     </button>
                   </div>
                 </div>
@@ -840,7 +858,7 @@ export function InsightsAndMatrix({
         )}
 
         {activeTab === 'summary' && (
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
@@ -858,9 +876,9 @@ export function InsightsAndMatrix({
                         color: 'var(--op-text-secondary)',
                       }
                 }
-                className="whitespace-nowrap rounded-xl border px-3 py-1 text-xs font-bold transition"
+                className="max-w-full truncate rounded-xl border px-3 py-1 text-xs font-bold transition"
               >
-                Во время игры
+                {t('summaryLiveTab')}
               </button>
               <button
                 type="button"
@@ -878,9 +896,9 @@ export function InsightsAndMatrix({
                         color: 'var(--op-text-secondary)',
                       }
                 }
-                className="whitespace-nowrap rounded-xl border px-3 py-1 text-xs font-bold transition"
+                className="max-w-full truncate rounded-xl border px-3 py-1 text-xs font-bold transition"
               >
-                После раздачи / Шоудаун
+                {t('summaryPostTab')}
               </button>
             </div>
 
@@ -891,30 +909,42 @@ export function InsightsAndMatrix({
                     backgroundColor: 'var(--op-bg-elevated)',
                     borderColor: 'var(--op-border-subtle)',
                   }}
-                  className="space-y-1.5 rounded-xl border p-3"
+                  className="min-w-0 space-y-1.5 rounded-xl border p-3"
                 >
-                  <div className="font-bold">Разбор текущей ситуации</div>
-                  <p>
-                    {engine.verdict.explanationLayers?.verdictReason ??
-                      engine.verdict.reasonText}
+                  <div className="break-words font-bold">
+                    {t('situationAnalysisTitle')}
+                  </div>
+                  <p className="break-words">
+                    {translateSituationLine(
+                      locale,
+                      translateReasonCode(
+                        locale,
+                        engine.verdict.reasonCode,
+                        engine.verdict.explanationLayers?.verdictReason ??
+                          engine.verdict.reasonText
+                      )
+                    )}
                   </p>
                   {engine.verdict.explanationLayers?.tableFactors?.map(
                     (factor, idx) => (
                       <div
                         key={idx}
                         style={{ color: 'var(--op-text-secondary)' }}
-                        className="text-[11px]"
+                        className="break-words text-[11px]"
                       >
-                        • {factor}
+                        - {translateSituationLine(locale, factor)}
                       </div>
                     )
                   )}
                   {engine.verdict.explanationLayers?.nextStepNote && (
                     <div
                       style={{ color: 'var(--op-text-secondary)' }}
-                      className="pt-1 text-[11px] font-medium"
+                      className="break-words pt-1 text-[11px] font-medium"
                     >
-                      {engine.verdict.explanationLayers.nextStepNote}
+                      {translateSituationLine(
+                        locale,
+                        engine.verdict.explanationLayers.nextStepNote
+                      )}
                     </div>
                   )}
                 </div>
@@ -925,16 +955,18 @@ export function InsightsAndMatrix({
                       backgroundColor: 'var(--op-bg-elevated)',
                       borderColor: 'var(--op-border-subtle)',
                     }}
-                    className="rounded-xl border p-2.5"
+                    className="min-w-0 rounded-xl border p-2.5"
                   >
                     <div
                       style={{ color: 'var(--op-accent-gold)' }}
-                      className="text-[11px] font-bold"
+                      className="truncate text-[11px] font-bold"
                     >
-                      В ALL-IN
+                      {t('inAllInTitle')}
                     </div>
-                    <div className="mt-1 text-xs">
-                      {allInList.length > 0 ? allInList.join(', ') : 'нет'}
+                    <div className="mt-1 break-words text-xs">
+                      {allInList.length > 0
+                        ? allInList.join(', ')
+                        : t('noneLabel')}
                     </div>
                   </div>
 
@@ -943,16 +975,18 @@ export function InsightsAndMatrix({
                       backgroundColor: 'var(--op-bg-elevated)',
                       borderColor: 'var(--op-border-subtle)',
                     }}
-                    className="rounded-xl border p-2.5"
+                    className="min-w-0 rounded-xl border p-2.5"
                   >
                     <div
                       style={{ color: 'var(--op-accent-primary)' }}
-                      className="text-[11px] font-bold"
+                      className="truncate text-[11px] font-bold"
                     >
-                      Рейз / ALL-IN на этапе
+                      {t('streetRaisesTitle')}
                     </div>
-                    <div className="mt-1 text-xs">
-                      {raiseList.length > 0 ? raiseList.join(', ') : 'нет'}
+                    <div className="mt-1 break-words text-xs">
+                      {raiseList.length > 0
+                        ? raiseList.join(', ')
+                        : t('noneLabel')}
                     </div>
                   </div>
 
@@ -961,16 +995,18 @@ export function InsightsAndMatrix({
                       backgroundColor: 'var(--op-bg-elevated)',
                       borderColor: 'var(--op-border-subtle)',
                     }}
-                    className="rounded-xl border p-2.5"
+                    className="min-w-0 rounded-xl border p-2.5"
                   >
                     <div
                       style={{ color: 'var(--op-accent-fold)' }}
-                      className="text-[11px] font-bold"
+                      className="truncate text-[11px] font-bold"
                     >
-                      Сбросили карты (FOLD)
+                      {t('foldedPlayersTitle')}
                     </div>
-                    <div className="mt-1 text-xs">
-                      {foldedList.length > 0 ? foldedList.join(', ') : 'нет'}
+                    <div className="mt-1 break-words text-xs">
+                      {foldedList.length > 0
+                        ? foldedList.join(', ')
+                        : t('noneLabel')}
                     </div>
                   </div>
 
@@ -979,18 +1015,18 @@ export function InsightsAndMatrix({
                       backgroundColor: 'var(--op-bg-elevated)',
                       borderColor: 'var(--op-border-subtle)',
                     }}
-                    className="rounded-xl border p-2.5"
+                    className="min-w-0 rounded-xl border p-2.5"
                   >
                     <div
                       style={{ color: 'var(--op-text-secondary)' }}
-                      className="text-[11px] font-bold"
+                      className="truncate text-[11px] font-bold"
                     >
-                      Ходят после «Я»
+                      {t('actsAfterMeTitle')}
                     </div>
-                    <div className="mt-1 text-xs">
-                      {engine.turnContext.afterMe.length > 0
-                        ? engine.turnContext.afterMe.join(', ')
-                        : 'круг завершается после вас'}
+                    <div className="mt-1 break-words text-xs">
+                      {afterMeDisplayNames.length > 0
+                        ? afterMeDisplayNames.join(', ')
+                        : t('roundEndsAfterYou')}
                     </div>
                   </div>
                 </div>
@@ -1002,15 +1038,17 @@ export function InsightsAndMatrix({
                     backgroundColor: 'var(--op-bg-elevated)',
                     borderColor: 'var(--op-border-subtle)',
                   }}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3"
+                  className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl border p-3"
                 >
-                  <div>
-                    <div className="font-bold">Фиксация победителя и шоудауна</div>
+                  <div className="min-w-0">
+                    <div className="break-words font-bold">
+                      {t('showdownLockTitle')}
+                    </div>
                     <div
                       style={{ color: 'var(--op-text-secondary)' }}
-                      className="text-[11px]"
+                      className="break-words text-[11px]"
                     >
-                      Колода следующей раздачи изолирована от вскрытых карт прошлых рук
+                      {t('showdownDeckIsolationNote')}
                     </div>
                   </div>
 
@@ -1030,18 +1068,18 @@ export function InsightsAndMatrix({
                             color: 'var(--op-text-secondary)',
                           }
                     }
-                    className="whitespace-nowrap rounded-xl border px-3 py-1.5 text-xs font-bold transition"
+                    className="max-w-full truncate rounded-xl border px-3 py-1.5 text-xs font-bold transition"
                   >
-                    {isShowdownMode ? 'Шоудаун: вкл' : 'Без вскрытия'}
+                    {isShowdownMode ? t('showdownOnBtn') : t('noShowdownBtn')}
                   </button>
                 </div>
 
                 <div className="space-y-1.5">
                   <div
                     style={{ color: 'var(--op-text-secondary)' }}
-                    className="text-[11px] font-bold"
+                    className="truncate text-[11px] font-bold"
                   >
-                    Победитель(и) раздачи
+                    {t('winnersTitle')}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {seatRoster
@@ -1066,9 +1104,9 @@ export function InsightsAndMatrix({
                                     color: 'var(--op-text-secondary)',
                                   }
                             }
-                            className="whitespace-nowrap rounded-xl border px-2.5 py-1.5 text-xs font-bold transition"
+                            className="max-w-full truncate rounded-xl border px-2.5 py-1.5 text-xs font-bold transition"
                           >
-                            #{p.seatIndex + 1} {p.displayName}
+                            {p.displayName}
                           </button>
                         );
                       })}
@@ -1081,13 +1119,13 @@ export function InsightsAndMatrix({
                       backgroundColor: 'var(--op-bg-elevated)',
                       borderColor: 'var(--op-border-subtle)',
                     }}
-                    className="space-y-2 rounded-xl border p-3"
+                    className="min-w-0 space-y-2 rounded-xl border p-3"
                   >
                     <div
                       style={{ color: 'var(--op-text-secondary)' }}
-                      className="text-[11px] font-bold"
+                      className="break-words text-[11px] font-bold"
                     >
-                      Вскрытые карты на шоудауне (только в историю и память Φ)
+                      {t('revealedCardsTitle')}
                     </div>
                     {seatRoster
                       .filter((p) => !p.isMe && p.status === 'active')
@@ -1098,8 +1136,8 @@ export function InsightsAndMatrix({
                             key={p.playerId}
                             className="flex flex-wrap items-center justify-between gap-2"
                           >
-                            <span className="font-semibold">
-                              #{p.seatIndex + 1} {p.displayName}
+                            <span className="truncate font-semibold">
+                              {p.displayName}
                             </span>
                             <div className="flex items-center gap-1.5">
                               {([0, 1] as const).map((slot) => {
@@ -1138,12 +1176,12 @@ export function InsightsAndMatrix({
                         }}
                         className="space-y-2 rounded-xl border p-2.5"
                       >
-                        <div className="flex items-center justify-between text-[11px]">
+                        <div className="flex items-center justify-between gap-2 text-[11px]">
                           <span
                             style={{ color: 'var(--op-accent-gold)' }}
-                            className="font-bold"
+                            className="truncate font-bold"
                           >
-                            Вскрытая карта — место #{revealPickerSeat.seatIndex + 1}
+                            {revealedSeatLabelClean} {revealPickerSeat.seatIndex + 1}
                           </span>
                           <button
                             type="button"
@@ -1156,8 +1194,9 @@ export function InsightsAndMatrix({
                               setRevealPickerSeat(null);
                             }}
                             style={{ color: 'var(--op-text-secondary)' }}
+                            className="shrink-0"
                           >
-                            Очистить
+                            {t('clearShortBtn')}
                           </button>
                         </div>
 
@@ -1230,9 +1269,9 @@ export function InsightsAndMatrix({
                       borderColor: 'var(--op-accent-primary)',
                       color: 'var(--op-accent-primary)',
                     }}
-                    className="whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-extrabold hover:brightness-110"
+                    className="max-w-full truncate rounded-xl border px-3 py-2 text-xs font-extrabold hover:brightness-110"
                   >
-                    Зафиксировать итог и сдвинуть BTN
+                    {t('commitHandBtn')}
                   </button>
                   <button
                     type="button"
@@ -1242,9 +1281,9 @@ export function InsightsAndMatrix({
                       borderColor: 'var(--op-border-subtle)',
                       color: 'var(--op-text-secondary)',
                     }}
-                    className="whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-semibold"
+                    className="max-w-full truncate rounded-xl border px-3 py-2 text-xs font-semibold"
                   >
-                    Новая раздача без фиксации
+                    {t('newHandNoCommitBtn')}
                   </button>
                 </div>
               </div>

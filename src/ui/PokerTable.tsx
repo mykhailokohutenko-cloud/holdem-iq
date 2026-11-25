@@ -9,8 +9,17 @@ import type {
   SeatConfig,
   SessionState,
 } from '../engine/types';
+import {
+  type AppLocale,
+  formatPlayerDisplayName,
+  type TranslationKey,
+  translate,
+  translatePlayerAction,
+  translateStyleTag,
+} from '../i18n';
 
 export interface PokerTableProps {
+  locale?: AppLocale;
   session: SessionState;
   hand: HandState;
   engine: EngineOutput;
@@ -33,21 +42,6 @@ export interface PokerTableProps {
   onBettingRoundComplete?: () => void;
 }
 
-const STYLE_TAG_RU: Record<PlayerStyleTag, string> = {
-  NEUTRAL: 'Обычный стиль',
-  TIGHT_AGG: 'Тайтово-агрессивный',
-  TIGHT_PASSIVE: 'Тайтово-пассивный',
-  LOOSE_PASSIVE: 'Лузово-пассивный',
-  LOOSE_AGG: 'Лузово-агрессивный',
-};
-
-const ACTION_LABEL_RU: Record<PlayerAction, string> = {
-  FOLD: 'Пас (FOLD)',
-  CHECK_CALL: 'Чек / Колл',
-  RAISE: 'Рейз (RAISE)',
-  ALL_IN: 'ALL-IN',
-};
-
 function computeOvalSeatCoords(
   index: number,
   total: number
@@ -63,6 +57,7 @@ function computeOvalSeatCoords(
 }
 
 export function PokerTable({
+  locale = 'en',
   session,
   hand,
   engine,
@@ -84,6 +79,8 @@ export function PokerTable({
   onStreetRoundCompleted,
   onBettingRoundComplete,
 }: PokerTableProps) {
+  const t = (key: TranslationKey) => translate(locale, key);
+
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
   const [roundClosedBeforeNextBoard, setRoundClosedBeforeNextBoard] =
     useState(false);
@@ -322,11 +319,16 @@ export function PokerTable({
       session.seats.find((s) => s.seatIndex === selectedSeat) ?? {
         seatIndex: selectedSeat,
         playerId: `seat-${selectedSeat}`,
-        name: `Игрок #${selectedSeat + 1}`,
+        name: formatPlayerDisplayName(
+          locale,
+          undefined,
+          selectedSeat,
+          selectedSeat === hand.mySeat
+        ),
         isMe: selectedSeat === hand.mySeat,
       }
     );
-  }, [hand.mySeat, selectedSeat, session.seats]);
+  }, [hand.mySeat, selectedSeat, session.seats, locale]);
 
   const activeParticipant: HandParticipant | undefined =
     selectedSeat !== null ? hand.participants[selectedSeat] : undefined;
@@ -345,6 +347,9 @@ export function PokerTable({
 
   const isCompactSeats = session.nTable >= 10;
   const useMobileGrid = session.nTable >= 7;
+
+  const handLabelClean = t('handNumberPrefix');
+  const seatLabelClean = t('seatPrefix');
 
   function renderSeatCard(seatIndex: number, compactMobileGrid = false) {
     const seatCfg = session.seats.find((s) => s.seatIndex === seatIndex);
@@ -367,11 +372,12 @@ export function PokerTable({
     const mem = session.players[playerId];
     const styleTag: PlayerStyleTag =
       insight?.styleTag ?? mem?.styleTag ?? 'NEUTRAL';
-    const displayName = isMe
-      ? 'Я'
-      : seatCfg?.name && !seatCfg.name.startsWith('seat-')
-        ? seatCfg.name
-        : `Игрок #${seatIndex + 1}`;
+    const displayName = formatPlayerDisplayName(
+      locale,
+      seatCfg?.name ?? mem?.name,
+      seatIndex,
+      isMe
+    );
 
     const lastEvent = [...hand.events]
       .reverse()
@@ -426,55 +432,46 @@ export function PokerTable({
             : isCompactSeats
               ? 'w-[86px] px-1.5 py-1 text-[10px]'
               : 'w-[114px] sm:w-[128px] px-2.5 py-2 text-[11px]'
-        } relative flex flex-col items-start rounded-xl border text-left transition hover:brightness-110`}
+        } relative flex min-w-0 flex-col items-start rounded-xl border text-left transition hover:brightness-110`}
       >
-        <div className="flex w-full items-center justify-between gap-1 leading-tight">
-          <span
-            style={{ color: 'var(--op-text-secondary)' }}
-            className="op-tabular text-[10px] font-bold"
-          >
-            #{seatIndex + 1}
-          </span>
-
-          <div className="flex items-center gap-0.5">
-            {isBtn && (
-              <span
-                style={{
-                  backgroundColor: 'var(--op-chip-btn-bg)',
-                  color: 'var(--op-chip-btn-text)',
-                }}
-                className={`rounded px-1 text-[9px] font-black ${
-                  btnPulse ? 'scale-110' : ''
-                }`}
-              >
-                BTN
-              </span>
-            )}
-            {isSb && (
-              <span
-                style={{
-                  backgroundColor: 'var(--op-bg-surface)',
-                  borderColor: 'var(--op-accent-call)',
-                  color: 'var(--op-accent-call)',
-                }}
-                className="rounded border px-1 text-[9px] font-bold"
-              >
-                SB
-              </span>
-            )}
-            {isBb && (
-              <span
-                style={{
-                  backgroundColor: 'var(--op-accent-gold-soft)',
-                  borderColor: 'var(--op-accent-gold)',
-                  color: 'var(--op-accent-gold)',
-                }}
-                className="rounded border px-1 text-[9px] font-bold"
-              >
-                BB
-              </span>
-            )}
-          </div>
+        <div className="flex w-full items-center justify-end gap-0.5 leading-tight">
+          {isBtn && (
+            <span
+              style={{
+                backgroundColor: 'var(--op-chip-btn-bg)',
+                color: 'var(--op-chip-btn-text)',
+              }}
+              className={`rounded px-1 text-[9px] font-black ${
+                btnPulse ? 'scale-110' : ''
+              }`}
+            >
+              BTN
+            </span>
+          )}
+          {isSb && (
+            <span
+              style={{
+                backgroundColor: 'var(--op-bg-surface)',
+                borderColor: 'var(--op-accent-call)',
+                color: 'var(--op-accent-call)',
+              }}
+              className="rounded border px-1 text-[9px] font-bold"
+            >
+              SB
+            </span>
+          )}
+          {isBb && (
+            <span
+              style={{
+                backgroundColor: 'var(--op-accent-gold-soft)',
+                borderColor: 'var(--op-accent-gold)',
+                color: 'var(--op-accent-gold)',
+              }}
+              className="rounded border px-1 text-[9px] font-bold"
+            >
+              BB
+            </span>
+          )}
         </div>
 
         <div className="mt-0.5 w-full truncate font-extrabold leading-tight">
@@ -483,7 +480,9 @@ export function PokerTable({
 
         <div className="mt-0.5 w-full truncate font-bold leading-tight">
           {isEliminated ? (
-            <span style={{ color: 'var(--op-text-muted)' }}>Выбыл</span>
+            <span style={{ color: 'var(--op-text-muted)' }}>
+              {t('seatEliminated')}
+            </span>
           ) : isAllIn ? (
             <span
               style={{ color: 'var(--op-accent-gold)' }}
@@ -493,11 +492,11 @@ export function PokerTable({
             </span>
           ) : isFolded ? (
             <span style={{ color: 'var(--op-text-muted)' }}>
-              Пас (FOLD)
+              {t('seatFolded')}
             </span>
           ) : isWinner ? (
             <span style={{ color: 'var(--op-accent-primary)' }}>
-              Победитель
+              {t('seatWinner')}
             </span>
           ) : lastEvent ? (
             <span
@@ -510,10 +509,12 @@ export function PokerTable({
                       : 'var(--op-accent-call)',
               }}
             >
-              {ACTION_LABEL_RU[lastEvent.action]}
+              {translatePlayerAction(locale, lastEvent.action)}
             </span>
           ) : (
-            <span style={{ color: 'var(--op-text-secondary)' }}>В игре</span>
+            <span style={{ color: 'var(--op-text-secondary)' }}>
+              {t('seatInPlay')}
+            </span>
           )}
         </div>
 
@@ -522,7 +523,7 @@ export function PokerTable({
             style={{ color: 'var(--op-text-secondary)' }}
             className="mt-0.5 w-full truncate text-[10px] leading-tight"
           >
-            {STYLE_TAG_RU[styleTag]}
+            {translateStyleTag(locale, styleTag)}
           </div>
         )}
       </button>
@@ -542,15 +543,16 @@ export function PokerTable({
         style={{ borderColor: 'var(--op-border-subtle)' }}
         className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5"
       >
-        <div>
-          <h2 className="text-sm font-bold">
-            Стол ({session.nTable} мест · в игре {engine.nActive})
+        <div className="min-w-0">
+          <h2 className="break-words text-sm font-bold">
+            {t('tableTitlePrefix')} ({session.nTable} {t('tableSeatsSuffix')} ·{' '}
+            {t('tableActiveSuffix')} {engine.nActive})
           </h2>
           <p
             style={{ color: 'var(--op-text-secondary)' }}
-            className="text-[11px]"
+            className="break-words text-[11px]"
           >
-            Нажми на место для действия, ALL-IN, выбывания, отметки победителя или смены ролей
+            {t('tableHint')}
           </p>
         </div>
 
@@ -571,9 +573,9 @@ export function PokerTable({
                     color: 'var(--op-text-secondary)',
                   }
             }
-            className="whitespace-nowrap rounded-xl border px-3 py-1.5 text-xs font-semibold transition"
+            className="max-w-full truncate rounded-xl border px-3 py-1.5 text-xs font-semibold transition"
           >
-            {isShowdownMode ? 'Шоудаун: вкл' : 'Шоудаун'}
+            {isShowdownMode ? t('showdownOnBtn') : t('showdownBtn')}
           </button>
 
           <button
@@ -584,9 +586,9 @@ export function PokerTable({
               backgroundColor: 'var(--op-bg-elevated)',
               color: 'var(--op-accent-primary)',
             }}
-            className="whitespace-nowrap rounded-xl border px-3 py-1.5 text-xs font-bold transition hover:brightness-110"
+            className="max-w-full truncate rounded-xl border px-3 py-1.5 text-xs font-bold transition hover:brightness-110"
           >
-            Завершить раздачу
+            {t('completeHandBtn')}
           </button>
         </div>
       </div>
@@ -607,19 +609,20 @@ export function PokerTable({
                 borderColor: 'var(--op-accent-gold)',
                 color: 'var(--op-accent-gold)',
               }}
-              className="rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+              className="max-w-full truncate rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
             >
-              Раздача #{hand.handId}
+              {handLabelClean} {hand.handId}
             </span>
             <div className="op-tabular text-[11px] font-bold">
-              Активных: {engine.nActive} · Соперников: {engine.nOpp}
+              {t('activeCountLabel')} {engine.nActive} · {t('opponentsCountLabel')}{' '}
+              {engine.nOpp}
             </div>
             {(engine.nAiOpp ?? 0) > 0 && (
               <div
                 style={{ color: 'var(--op-accent-gold)' }}
                 className="op-tabular text-[10px] font-extrabold"
               >
-                ALL-IN: {engine.nAiOpp}
+                {t('allInCountLabel')} {engine.nAiOpp}
               </div>
             )}
           </div>
@@ -630,7 +633,9 @@ export function PokerTable({
             }`}
           >
             {Array.from({ length: session.nTable }, (_, seatIndex) => (
-              <div key={seatIndex}>{renderSeatCard(seatIndex, true)}</div>
+              <div key={seatIndex} className="min-w-0">
+                {renderSeatCard(seatIndex, true)}
+              </div>
             ))}
           </div>
         </div>
@@ -661,19 +666,20 @@ export function PokerTable({
               borderColor: 'var(--op-accent-gold)',
               color: 'var(--op-accent-gold)',
             }}
-            className="rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+            className="max-w-[200px] truncate rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
           >
-            Раздача #{hand.handId}
+            {handLabelClean} {hand.handId}
           </span>
-          <div className="op-tabular mt-1 text-xs font-bold">
-            Активных: {engine.nActive} · Соперников: {engine.nOpp}
+          <div className="op-tabular mt-1 max-w-[220px] truncate text-xs font-bold">
+            {t('activeCountLabel')} {engine.nActive} · {t('opponentsCountLabel')}{' '}
+            {engine.nOpp}
           </div>
           {(engine.nAiOpp ?? 0) > 0 && (
             <div
               style={{ color: 'var(--op-accent-gold)' }}
-              className="op-tabular mt-0.5 text-[11px] font-extrabold"
+              className="op-tabular mt-0.5 max-w-[200px] truncate text-[11px] font-extrabold"
             >
-              В ALL-IN: {engine.nAiOpp}
+              {t('inAllInCountLabel')} {engine.nAiOpp}
             </div>
           )}
         </div>
@@ -711,18 +717,18 @@ export function PokerTable({
             backgroundColor: 'var(--op-bg-elevated)',
             borderColor: 'var(--op-border-subtle)',
           }}
-          className="space-y-2.5 rounded-xl border p-3"
+          className="min-w-0 space-y-2.5 rounded-xl border p-3"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-xs font-bold">
-              Место #{selectedSeat + 1}:{' '}
+            <div className="min-w-0 break-words text-xs font-bold">
+              {seatLabelClean} {selectedSeat + 1}:{' '}
               <span style={{ color: 'var(--op-accent-gold)' }}>
-                {activeSeatConfig.isMe || hand.mySeat === selectedSeat
-                  ? 'Я'
-                  : activeSeatConfig.name &&
-                      !activeSeatConfig.name.startsWith('seat-')
-                    ? activeSeatConfig.name
-                    : `Игрок #${selectedSeat + 1}`}
+                {formatPlayerDisplayName(
+                  locale,
+                  activeSeatConfig.name,
+                  selectedSeat,
+                  Boolean(activeSeatConfig.isMe || hand.mySeat === selectedSeat)
+                )}
               </span>
               {activeIsAllIn && (
                 <span
@@ -743,7 +749,7 @@ export function PokerTable({
                   }}
                   className="ml-2 rounded px-1.5 py-0.5 text-[10px] font-bold"
                 >
-                  Выбыл
+                  {t('seatEliminated')}
                 </span>
               )}
             </div>
@@ -756,9 +762,9 @@ export function PokerTable({
                 borderColor: 'var(--op-border-subtle)',
                 color: 'var(--op-text-secondary)',
               }}
-              className="whitespace-nowrap rounded-lg border px-2.5 py-1 text-[11px]"
+              className="max-w-full truncate rounded-lg border px-2.5 py-1 text-[11px]"
             >
-              Закрыть
+              {t('closeBtn')}
             </button>
           </div>
 
@@ -800,13 +806,13 @@ export function PokerTable({
                               color: 'var(--op-accent-call)',
                             }
                 }
-                className={`whitespace-nowrap rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
+                className={`max-w-full truncate rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
                   !activeCanAct
                     ? 'cursor-not-allowed opacity-40'
                     : 'hover:brightness-110'
                 }`}
               >
-                {ACTION_LABEL_RU[act]}
+                {translatePlayerAction(locale, act)}
               </button>
             ))}
           </div>
@@ -823,9 +829,9 @@ export function PokerTable({
                 borderColor: 'var(--op-accent-gold)',
                 color: 'var(--op-accent-gold)',
               }}
-              className="whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:brightness-110"
+              className="max-w-full truncate rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:brightness-110"
             >
-              Поставить BTN
+              {t('setBtnAction')}
             </button>
 
             <button
@@ -836,9 +842,9 @@ export function PokerTable({
                 borderColor: 'var(--op-border-subtle)',
                 color: 'var(--op-text-primary)',
               }}
-              className="whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:brightness-110"
+              className="max-w-full truncate rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:brightness-110"
             >
-              Я сижу здесь
+              {t('sitHereAction')}
             </button>
 
             {canMarkWinnerHere && (
@@ -850,11 +856,11 @@ export function PokerTable({
                   borderColor: 'var(--op-accent-primary)',
                   color: 'var(--op-accent-primary)',
                 }}
-                className="whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-110"
+                className="max-w-full truncate rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-110"
               >
                 {selectedWinners.includes(selectedSeat)
-                  ? 'Победитель (выбр.)'
-                  : 'Отметить победителем'}
+                  ? t('winnerSelectedAction')
+                  : t('markWinnerAction')}
               </button>
             )}
 
@@ -867,9 +873,9 @@ export function PokerTable({
                   borderColor: 'var(--op-accent-primary)',
                   color: 'var(--op-accent-primary)',
                 }}
-                className="whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-[11px] font-bold hover:brightness-110"
+                className="max-w-full truncate rounded-lg border px-2.5 py-1.5 text-[11px] font-bold hover:brightness-110"
               >
-                Возобновить
+                {t('resumePlayerAction')}
               </button>
             ) : (
               <button
@@ -881,13 +887,13 @@ export function PokerTable({
                   borderColor: 'var(--op-border-subtle)',
                   color: 'var(--op-text-secondary)',
                 }}
-                className={`whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold ${
+                className={`max-w-full truncate rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold ${
                   nonEliminatedCount <= 2
                     ? 'cursor-not-allowed opacity-40'
                     : 'hover:brightness-110'
                 }`}
               >
-                Выбыл из игры
+                {t('eliminatePlayerAction')}
               </button>
             )}
 
@@ -900,9 +906,9 @@ export function PokerTable({
                   borderColor: 'var(--op-border-subtle)',
                   color: 'var(--op-text-secondary)',
                 }}
-                className="whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-[11px]"
+                className="max-w-full truncate rounded-lg border px-2.5 py-1.5 text-[11px]"
               >
-                Сброс профиля
+                {t('resetProfileAction')}
               </button>
             )}
           </div>
