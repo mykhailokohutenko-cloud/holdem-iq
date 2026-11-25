@@ -1,0 +1,77 @@
+@import './pulse/obsidianPulse.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+[data-theme='dark'] {
+  --hq-bg-base: #090b0e;
+  --hq-bg-surface: #12161c;
+  --hq-bg-elevated: #1b212a;
+  --hq-border-subtle: #283242;
+  --hq-table-felt: #0e1f1a;
+  --hq-text-primary: #dfe5ee;
+  --hq-text-secondary: #7e899c;
+  --hq-verdict-raise: #10b981;
+  --hq-verdict-call: #0ea5e9;
+  --hq-verdict-check: #64748b;
+  --hq-verdict-fold: #e14b56;
+  --hq-my-hand-ring: #eab308;
+  --hq-chip-btn: #e6ecf2;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.hq-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.hq-scroll::-webkit-scrollbar-track {
+  background: #12161c;
+  border-radius: 9999px;
+}
+
+.hq-scroll::-webkit-scrollbar-thumb {
+  background: #2b3648;
+  border-radius: 9999px;
+}
+
+.hq-scroll::-webkit-scrollbar-thumb:hover {
+  background: #3a4860;
+}
+
+@keyframes hqAccentShift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.hq-accent-line {
+  background: linear-gradient(
+    90deg,
+    rgba(16, 185, 129, 0.45),
+    rgba(126, 137, 156, 0.25),
+    rgba(225, 75, 86, 0.45),
+    rgba(16, 185, 129, 0.45)
+  );
+  background-size: 240% 240%;
+  animation: hqAccentShift 9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
